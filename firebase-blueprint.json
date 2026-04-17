@@ -1,0 +1,73 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile information",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string", "format": "email" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string", "format": "uri" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["email", "createdAt"]
+    },
+    "Exam": {
+      "title": "Exam Template",
+      "description": "An exam template with original questions",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "title": { "type": "string" },
+        "subject": { "type": "string" },
+        "questions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "text": { "type": "string" },
+              "options": {
+                "type": "array",
+                "items": { "type": "string" }
+              },
+              "correctAnswerIndex": { "type": "number" },
+              "difficulty": { "type": "string", "enum": ["easy", "medium", "hard"] },
+              "bloomLevel": { "type": "string", "enum": ["remembering", "understanding", "applying", "analyzing", "evaluating", "creating"] }
+            }
+          }
+        },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "title", "questions", "createdAt"]
+    },
+    "GeneratedModel": {
+      "title": "Generated Exam Models",
+      "description": "Generated versions (A, B, C) of an exam",
+      "type": "object",
+      "properties": {
+        "examId": { "type": "string" },
+        "userId": { "type": "string" },
+        "version": { "type": "string", "enum": ["A", "B", "C"] },
+        "questions": { "type": "array" },
+        "answerKey": { "type": "object" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["examId", "userId", "version", "questions", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Stores user profiles"
+    },
+    "/exams/{examId}": {
+      "schema": "Exam",
+      "description": "Stores original exam templates"
+    },
+    "/generated_models/{modelId}": {
+      "schema": "GeneratedModel",
+      "description": "Stores shuffled versions of exams"
+    }
+  }
+}

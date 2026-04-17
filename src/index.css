@@ -1,0 +1,32 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --color-primary: #2563eb;
+  --color-primary-light: #eff6ff;
+  --color-accent: #10b981;
+  --color-bento-bg: #f8fafc;
+  --color-bento-text: #1e293b;
+  --color-bento-border: #e2e8f0;
+}
+
+@layer base {
+  body {
+    @apply bg-bento-bg text-bento-text font-sans antialiased;
+  }
+}
+
+@layer components {
+  .bento-card {
+    @apply bg-white border border-bento-border rounded-[20px] p-5 transition-all duration-200 hover:border-primary shadow-sm;
+  }
+  
+  .bento-dot {
+    @apply w-2.5 h-2.5 bg-primary rounded-full inline-block mr-2;
+  }
+
+  .bento-btn-primary {
+    @apply bg-primary text-white px-5 py-2 rounded-lg font-semibold transition hover:opacity-90 active:scale-95;
+  }
+}

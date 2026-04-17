@@ -1,0 +1,136 @@
+// ===============================================================
+// Assumed Data Model
+// ===============================================================
+//
+// Collection: users
+// Document ID: {userId}
+// Fields:
+//   - email: string (required)
+//   - displayName: string (optional)
+//   - photoURL: string (optional)
+//   - createdAt: timestamp (required)
+//
+// Collection: exams
+// Document ID: {examId}
+// Fields:
+//   - userId: string (required) - Owner of the exam
+//   - title: string (required, min: 1, max: 200)
+//   - subject: string (optional)
+//   - questions: list (required) - Array of question objects
+//   - createdAt: timestamp (required)
+//
+// Collection: generated_models
+// Document ID: {modelId}
+// Fields:
+//   - examId: string (required) - Reference to the original exam
+//   - userId: string (required) - Owner for access control
+//   - version: string (required, enum: ["A", "B", "C"])
+//   - questions: list (required) - Shuffled questions
+//   - answerKey: map (required) - Mapping of question ID to correct option
+//   - createdAt: timestamp (required)
+//
+// ===============================================================
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Global Safety Net: Default Deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['email', 'createdAt']) &&
+             data.keys().size() == 2 && // Strict key check
+             data.email is string && data.email.size() <= 256 &&
+             data.createdAt is timestamp;
+    }
+
+    function isValidExam(data) {
+      // Basic keys required for creation
+      return data.keys().hasAll(['userId', 'title', 'questions', 'createdAt']) &&
+             data.userId == request.auth.uid &&
+             data.title is string && data.title.size() > 0 && data.title.size() <= 200 &&
+             data.questions is list && data.questions.size() <= 200 &&
+             data.createdAt is timestamp;
+    }
+
+    function isValidGeneratedModel(data) {
+      return data.keys().hasAll(['examId', 'userId', 'version', 'questions', 'answerKey', 'createdAt']) &&
+             data.userId == request.auth.uid &&
+             data.version in ['A', 'B', 'C'] &&
+             data.questions is list && data.questions.size() <= 200 &&
+             data.answerKey is map &&
+             data.createdAt is timestamp;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId) && isValidUser(incoming());
+      allow update: if isOwner(userId) && isValidUser(incoming()) && 
+                    incoming().createdAt == existing().createdAt; // Immortality
+    }
+
+    match /exams/{examId} {
+      // Robust get/list protection
+      allow get: if isOwner(existing().userId);
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      
+      allow create: if isSignedIn() && isValidId(examId) && isValidExam(incoming()) &&
+                    incoming().createdAt == request.time;
+      
+      allow update: if isSignedIn() && isOwner(existing().userId) && isValidExam(incoming()) &&
+                    incoming().userId == existing().userId && // Immutable owner
+                    incoming().createdAt == existing().createdAt; // Immutable creation date
+      
+      allow delete: if isSignedIn() && isOwner(existing().userId);
+    }
+
+    match /generated_models/{modelId} {
+      allow get: if isOwner(existing().userId);
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      
+      allow create: if isSignedIn() && isValidId(modelId) && isValidGeneratedModel(incoming()) &&
+                    incoming().createdAt == request.time;
+                    
+      allow update: if isSignedIn() && isOwner(existing().userId) && isValidGeneratedModel(incoming()) &&
+                    incoming().userId == existing().userId &&
+                    incoming().examId == existing().examId &&
+                    incoming().createdAt == existing().createdAt;
+                    
+      allow delete: if isSignedIn() && isOwner(existing().userId);
+    }
+  }
+}
