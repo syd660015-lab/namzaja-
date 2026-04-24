@@ -19,14 +19,18 @@
 
 @layer components {
   .bento-card {
-    @apply bg-white border border-bento-border rounded-[20px] p-5 transition-all duration-200 hover:border-primary shadow-sm;
+    @apply bg-white border border-bento-border rounded-[32px] p-6 transition-all duration-300 hover:border-primary/20 shadow-[0_4px_20px_-4px_rgba(0,0,0,0.05)];
   }
   
   .bento-dot {
-    @apply w-2.5 h-2.5 bg-primary rounded-full inline-block mr-2;
+    @apply w-2.5 h-2.5 bg-primary rounded-full inline-block ml-3;
   }
 
   .bento-btn-primary {
-    @apply bg-primary text-white px-5 py-2 rounded-lg font-semibold transition hover:opacity-90 active:scale-95;
+    @apply bg-primary text-white px-6 py-3 rounded-2xl font-black text-sm transition-all duration-300 hover:opacity-95 active:scale-95 shadow-lg shadow-primary/10 hover:shadow-primary/20 disabled:opacity-50 disabled:scale-100;
+  }
+
+  .bento-input {
+    @apply w-full bg-bento-bg border border-bento-border rounded-[20px] px-5 py-3 text-sm font-bold outline-none focus:border-primary/40 focus:ring-4 focus:ring-primary/5 transition-all duration-300;
   }
 }

@@ -34,6 +34,9 @@ import {
   PieChart,
   Pie
 } from 'recharts';
+import { collection, query, where, getDocs, orderBy } from 'firebase/firestore';
+import { db } from '../lib/firebase';
+import { handleFirestoreError, OperationType } from '../lib/firestoreErrorHandler';
 
 interface ResultViewerProps {
   exam: Exam;
@@ -46,6 +49,7 @@ interface ResultViewerProps {
 export function ResultViewer({ exam, onBack, onUpdate, onSaveModels, onError }: ResultViewerProps) {
   const [models, setModels] = useState<GeneratedModel[]>([]);
   const [loading, setLoading] = useState(true);
+  const [searchingExisting, setSearchingExisting] = useState(false);
   const [activeVersion, setActiveVersion] = useState<'A' | 'B' | 'C' | 'stats' | 'key'>('A');
   const [showPreview, setShowPreview] = useState(false);
   
@@ -55,50 +59,84 @@ export function ResultViewer({ exam, onBack, onUpdate, onSaveModels, onError }: 
   );
   const [savingStats, setSavingStats] = useState(false);
 
-  const generateModels = async () => {
-    if (models.length > 0 || loading === false && models.length > 0) return;
+  const generateModels = async (force = false) => {
+    if ((loading || models.length > 0) && !force) return;
+    
     setLoading(true);
+    setSearchingExisting(true);
+    
     try {
-      const versions: ('A' | 'B' | 'C')[] = ['A', 'B', 'C'];
-      const generated: GeneratedModel[] = [];
+      // 1. Try to find existing models if not forcing re-generation
+      if (!force && exam.id) {
+        const q = query(
+          collection(db, 'generated_models'),
+          where('examId', '==', exam.id),
+          orderBy('version', 'asc')
+        );
+        const snapshot = await getDocs(q);
+        if (!snapshot.empty) {
+          const existingModels = snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+          } as GeneratedModel));
+          
+          if (existingModels.length >= 3) {
+            setModels(existingModels);
+            setLoading(false);
+            setSearchingExisting(false);
+            return;
+          }
+        }
+      }
 
-      for (const v of versions) {
+      setSearchingExisting(false);
+
+      // 2. Generate new ones if none found or forcing
+      const versions: ('A' | 'B' | 'C')[] = ['A', 'B', 'C'];
+      
+      const generationPromises = versions.map(async (v) => {
         const shuffled = await geminiService.shuffleExam(exam.questions, v);
         const answerKey: Record<string, number> = {};
         shuffled.forEach((q: any) => {
           answerKey[q.id] = q.correctAnswerIndex;
         });
 
-        const model: GeneratedModel = {
+        return {
           examId: exam.id || 'temp',
           userId: exam.userId,
           version: v,
           questions: shuffled,
           answerKey,
           createdAt: new Date()
-        };
-        generated.push(model);
-      }
+        } as GeneratedModel;
+      });
+
+      const generated = await Promise.all(generationPromises);
       setModels(generated);
       
-      // Auto-persist models if exam has an ID and hasn't generated yet
-      if (exam.id && !exam.hasGenerated) {
-        await onUpdate(exam.id, { hasGenerated: true } as any);
+      // Auto-persist models if exam has an ID and it's the first generation
+      if (exam.id && (!exam.hasGenerated || force)) {
+        if (!exam.hasGenerated) {
+          await onUpdate(exam.id, { hasGenerated: true } as any);
+        }
         await onSaveModels(exam.id, generated);
       }
     } catch (err) {
       console.error(err);
-      onError("فشل توليد نماذج الاختبار. يرجى المحاولة لاحقاً.");
+      onError("حدث خطأ أثناء معالجة نماذج الاختبار. يرجى المحاولة لاحقاً.");
     } finally {
       setLoading(false);
+      setSearchingExisting(false);
     }
   };
 
   useEffect(() => {
-    if (models.length === 0) {
+    let mounted = true;
+    if (models.length === 0 && mounted) {
       generateModels();
     }
-  }, [exam.id, models.length]);
+    return () => { mounted = false; };
+  }, [exam.id]);
 
   const handleSaveStats = async () => {
     if (!exam.id) return;
@@ -121,10 +159,11 @@ export function ResultViewer({ exam, onBack, onUpdate, onSaveModels, onError }: 
     exam.questions.forEach((originalQ, qIdx) => {
       content += `السؤال ${qIdx + 1}:\n`;
       models.forEach(m => {
-        const qIndexInModel = m.questions.findIndex(mq => mq.text === originalQ.text);
-        const answerIdx = m.questions[qIndexInModel].correctAnswerIndex;
-        const label = ['أ', 'ب', 'ج', 'د', 'هـ'][answerIdx] || '؟';
-        content += `  - نموذج ${m.version}: [${label}] (س${qIndexInModel + 1} في النموذج)\n`;
+        const qIndexInModel = m.questions.findIndex(mq => mq.id === originalQ.id);
+        const answerIdx = qIndexInModel !== -1 ? m.questions[qIndexInModel].correctAnswerIndex : -1;
+        const label = answerIdx !== -1 ? (['أ', 'ب', 'ج', 'د', 'هـ'][answerIdx] || '؟') : '؟';
+        const modelQNum = qIndexInModel !== -1 ? qIndexInModel + 1 : '؟';
+        content += `  - نموذج ${m.version}: [${label}] (س${modelQNum} في النموذج)\n`;
       });
       content += `\n`;
     });
@@ -176,8 +215,14 @@ export function ResultViewer({ exam, onBack, onUpdate, onSaveModels, onError }: 
         >
           <Sparkles className="w-20 h-20 text-primary mx-auto mb-8 opacity-40" />
         </motion.div>
-        <h2 className="text-3xl font-black text-bento-text mb-4">توليد النماذج الثلاثة</h2>
-        <p className="text-bento-text/50 mb-10 max-w-sm mx-auto font-bold text-sm">نستخدم خوارزميات التبديل العشوائي لضمان أعلى درجات النزاهة الأكاديمية.</p>
+        <h2 className="text-3xl font-black text-bento-text mb-4">
+          {searchingExisting ? "جاري جلب النماذج السابقة..." : "توليد النماذج الثلاثة"}
+        </h2>
+        <p className="text-bento-text/50 mb-10 max-w-sm mx-auto font-bold text-sm">
+          {searchingExisting 
+            ? "نبحث في قاعدة البيانات عن النماذج التي تم توليدها مسبقاً لهذا الاختبار."
+            : "نستخدم خوارزميات التبديل العشوائي لضمان أعلى درجات النزاهة الأكاديمية."}
+        </p>
         <div className="flex justify-center gap-2">
           <div className="w-3 h-3 bg-primary rounded-full animate-bounce [animation-delay:-0.3s]"></div>
           <div className="w-3 h-3 bg-primary rounded-full animate-bounce [animation-delay:-0.15s]"></div>
@@ -257,10 +302,10 @@ export function ResultViewer({ exam, onBack, onUpdate, onSaveModels, onError }: 
           <motion.button 
             whileHover={{ scale: 1.05, rotate: 180 }}
             whileTap={{ scale: 0.95 }}
-            onClick={generateModels}
+            onClick={() => generateModels(true)}
             className="flex items-center gap-2 text-bento-text/40 font-bold hover:text-bento-text px-4 py-2 transition text-sm"
           >
-            <RefreshCw className="w-4 h-4" />
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
             توليد جديد
           </motion.button>
           <motion.button 
@@ -653,14 +698,14 @@ export function ResultViewer({ exam, onBack, onUpdate, onSaveModels, onError }: 
                       <tr key={originalQ.id} className="border-t border-bento-border hover:bg-primary-light transition-colors">
                         <td className="py-5 font-black text-bento-text/30 text-xs">{qIdx + 1}</td>
                         {models.map(m => {
-                          const qIndexInModel = m.questions.findIndex(mq => mq.text === originalQ.text);
-                          const answerIdx = m.questions[qIndexInModel].correctAnswerIndex;
-                          const label = ['أ', 'ب', 'ج', 'د', 'هـ'][answerIdx] || '؟';
+                          const qIndexInModel = m.questions.findIndex(mq => mq.id === originalQ.id);
+                          const answerIdx = qIndexInModel !== -1 ? m.questions[qIndexInModel].correctAnswerIndex : -1;
+                          const label = answerIdx !== -1 ? (['أ', 'ب', 'ج', 'د', 'هـ'][answerIdx] || '؟') : '؟';
                           return (
                             <td key={m.version} className="py-5">
                               <div className="flex flex-col items-center">
                                 <span className="font-extrabold text-lg text-bento-text">{label}</span>
-                                <span className="text-[9px] text-bento-text/20 font-black uppercase">سـ {qIndexInModel + 1}</span>
+                                <span className="text-[9px] text-bento-text/20 font-black uppercase">سـ {qIndexInModel !== -1 ? qIndexInModel + 1 : '؟'}</span>
                               </div>
                             </td>
                           );

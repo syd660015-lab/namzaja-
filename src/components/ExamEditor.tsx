@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Exam, Question, Difficulty, BloomLevel } from '../types';
-import { Save, Sparkles, Trash2, Plus, GripVertical, CheckCircle2, BarChart3, BrainCircuit, Info, X, AlertTriangle } from 'lucide-react';
+import { Save, Sparkles, Trash2, Plus, GripVertical, CheckCircle2, BarChart3, BrainCircuit, Info, X, AlertTriangle, ChevronDown } from 'lucide-react';
 import { motion, AnimatePresence, Reorder } from 'motion/react';
 
 interface TooltipProps {
@@ -44,17 +44,22 @@ interface ExamEditorProps {
 export function ExamEditor({ exam, onSave, onCancel, onGenerate, onError }: ExamEditorProps) {
   const [title, setTitle] = useState(exam.title);
   const [subject, setSubject] = useState(exam.subject || '');
+  const generateId = () => {
+    return `q-${Math.random().toString(36).substring(2, 11)}-${Date.now()}`;
+  };
+
   const [questions, setQuestions] = useState<Question[]>(
-    exam.questions.map((q, i) => q.id ? q : { ...q, id: `q-${Date.now()}-${i}` })
+    exam.questions.map((q, i) => q.id ? q : { ...q, id: generateId() })
   );
   const [saving, setSaving] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
   const [showConfirmCancel, setShowConfirmCancel] = useState(false);
+  const [showTips, setShowTips] = useState(true);
 
   const addQuestion = () => {
     setHasChanges(true);
     const newQ: Question = {
-      id: `q-${Date.now()}`,
+      id: generateId(),
       text: '',
       options: ['', '', '', ''],
       correctAnswerIndex: 0
@@ -151,6 +156,50 @@ export function ExamEditor({ exam, onSave, onCancel, onGenerate, onError }: Exam
       </div>
 
       <div className="space-y-6">
+        <motion.div 
+          initial={false}
+          animate={{ height: showTips ? 'auto' : '52px' }}
+          className="bento-card overflow-hidden transition-all duration-300 border-primary/20 bg-primary/5"
+        >
+          <button 
+            onClick={() => setShowTips(!showTips)}
+            className="w-full flex items-center justify-between p-4 px-6 text-primary"
+          >
+            <div className="flex items-center gap-3">
+              <BrainCircuit className="w-5 h-5" />
+              <span className="font-extrabold text-sm">نصائح ذهبية لصياغة أسئلة اختبار فعالة</span>
+            </div>
+            <ChevronDown className={`w-4 h-4 transition-transform duration-300 ${showTips ? 'rotate-180' : ''}`} />
+          </button>
+          
+          <div className="px-6 pb-6 pt-2 grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="flex gap-3">
+              <div className="w-1.5 h-1.5 rounded-full bg-primary mt-2 flex-shrink-0" />
+              <p className="text-[13px] font-bold text-bento-text/70 leading-relaxed">
+                <span className="text-primary">تجنب الصياغة السلبية:</span> استخدم "أي مما يلي يعد..." بدلاً من "أي مما يلي ليس...". النفي يربك الطلاب ويزيد من وقت القراءة.
+              </p>
+            </div>
+            <div className="flex gap-3">
+              <div className="w-1.5 h-1.5 rounded-full bg-primary mt-2 flex-shrink-0" />
+              <p className="text-[13px] font-bold text-bento-text/70 leading-relaxed">
+                <span className="text-primary">توازي بنية الخيارات:</span> اجعل جميع البدائل متقاربة في الطول والأسلوب النحوي (مثلاً: جميعها أفعال أو جميعها أسماء).
+              </p>
+            </div>
+            <div className="flex gap-3">
+              <div className="w-1.5 h-1.5 rounded-full bg-primary mt-2 flex-shrink-0" />
+              <p className="text-[13px] font-bold text-bento-text/70 leading-relaxed">
+                <span className="text-primary">مشتتات منطقية:</span> اجعل الخيارات الخاطئة منطقية وجذابة للطالب الذي لم يدرس جيداً، ليكون الاختبار مقياساً حقيقياً للفهم.
+              </p>
+            </div>
+            <div className="flex gap-3">
+              <div className="w-1.5 h-1.5 rounded-full bg-primary mt-2 flex-shrink-0" />
+              <p className="text-[13px] font-bold text-bento-text/70 leading-relaxed">
+                <span className="text-primary">تجنب "كل ما سبق":</span> هذه الخيارات تقلل من جودة السؤال وتسهل التخمين. يفضل استبدالها بخيار رابع قوي ومنافس.
+              </p>
+            </div>
+          </div>
+        </motion.div>
+
         <Reorder.Group axis="y" values={questions} onReorder={setQuestions} className="space-y-4">
           {questions.map((q, idx) => (
             <Reorder.Item 

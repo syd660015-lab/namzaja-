@@ -198,11 +198,15 @@ export default function App() {
       {view === 'upload' && (
                 <UploadView 
                   onParsed={(data) => {
+                    const generateId = (i: number) => `q-${Math.random().toString(36).substring(2, 11)}-${Date.now()}-${i}`;
                     setCurrentExam({
                       userId: user.uid,
                       title: data.title,
                       subject: data.subject,
-                      questions: data.questions.map((q: any, i: number) => ({ ...q, id: `q-${Date.now()}-${i}` })),
+                      questions: data.questions.map((q: any, i: number) => ({ 
+                        ...q, 
+                        id: q.id || generateId(i) 
+                      })),
                       createdAt: new Date()
                     });
                     setView('edit');
