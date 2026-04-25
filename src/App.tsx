@@ -195,7 +195,7 @@ export default function App() {
                   onDelete={deleteExam}
                 />
               )}
-      {view === 'upload' && (
+              {view === 'upload' && (
                 <UploadView 
                   onParsed={(data) => {
                     const generateId = (i: number) => `q-${Math.random().toString(36).substring(2, 11)}-${Date.now()}-${i}`;

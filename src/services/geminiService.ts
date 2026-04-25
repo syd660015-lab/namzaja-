@@ -13,7 +13,7 @@ export const geminiService = {
    */
   async parseExamText(text: string): Promise<{ title: string; subject: string; questions: any[] }> {
     const response = await ai.models.generateContent({
-      model: "gemini-3.1-pro-preview", // Complex task
+      model: "gemini-2.0-flash", // Complex task
       contents: `Parse the following exam text into a structured JSON format. 
       Extract the exam title, the subject/field of study, AND a list of multiple-choice questions.
       Each question should have: 'text', 'options' (array of strings), and 'correctAnswerIndex' (if identifiable, else null).
@@ -50,7 +50,12 @@ export const geminiService = {
       }
     });
 
-    return JSON.parse(response.text || "{}");
+    const parsed = JSON.parse(response.text || "{}");
+    return {
+      title: parsed.title || "بدون عنوان",
+      subject: parsed.subject || "غير مصنف",
+      questions: parsed.questions || []
+    };
   },
 
   /**
@@ -58,7 +63,7 @@ export const geminiService = {
    */
   async shuffleExam(questions: any[], version: 'A' | 'B' | 'C'): Promise<any[]> {
     const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+      model: "gemini-2.0-flash",
       contents: `You are an expert examiner. Given a list of questions, return a new version (Version ${version}) where BOTH the order of questions AND the order of options within each question are shuffled randomly.
       Maintain the link to the correct answer.
       
