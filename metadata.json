@@ -2,5 +2,7 @@
   "name": "Remix: namzag",
   "description": "تطبيق أكاديمي لتوليد نماذج امتحانية متعددة (A, B, C) مع تبديل الأسئلة والخيارات آلياً لضمان النزاهة الأكاديمية.",
   "requestFramePermissions": [],
-  "majorCapabilities": []
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }

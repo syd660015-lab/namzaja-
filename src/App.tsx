@@ -233,6 +233,7 @@ export default function App() {
                   onBack={() => setView('dashboard')}
                   onUpdate={(id, updates) => saveExam({ id, ...updates }, true).then(() => {})}
                   onSaveModels={saveGeneratedModels}
+                  onSaveExam={(examData) => saveExam(examData, true)}
                   onError={(msg) => setError(msg)}
                 />
               )}

@@ -43,10 +43,11 @@ interface ResultViewerProps {
   onBack: () => void;
   onUpdate: (examId: string, updates: Partial<Exam>) => Promise<void>;
   onSaveModels: (examId: string, models: GeneratedModel[]) => Promise<void>;
+  onSaveExam?: (exam: Partial<Exam>) => Promise<string>;
   onError: (msg: string) => void;
 }
 
-export function ResultViewer({ exam, onBack, onUpdate, onSaveModels, onError }: ResultViewerProps) {
+export function ResultViewer({ exam, onBack, onUpdate, onSaveModels, onSaveExam, onError }: ResultViewerProps) {
   const [models, setModels] = useState<GeneratedModel[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchingExisting, setSearchingExisting] = useState(false);
@@ -114,12 +115,33 @@ export function ResultViewer({ exam, onBack, onUpdate, onSaveModels, onError }: 
       const generated = await Promise.all(generationPromises);
       setModels(generated);
       
-      // Auto-persist models if exam has an ID and it's the first generation
-      if (exam.id && (!exam.hasGenerated || force)) {
-        if (!exam.hasGenerated) {
-          await onUpdate(exam.id, { hasGenerated: true } as any);
+      // Auto-persist models and original exam immediately after generation
+      let finalExamId = exam.id;
+      if (!finalExamId) {
+        if (onSaveExam) {
+          try {
+            finalExamId = await onSaveExam({
+              title: exam.title,
+              subject: exam.subject || '',
+              questions: exam.questions,
+              hasGenerated: true
+            });
+            // Update examId on generated models
+            generated.forEach(model => {
+              model.examId = finalExamId;
+            });
+          } catch (saveErr) {
+            console.error("Auto-saving original exam failed:", saveErr);
+          }
         }
-        await onSaveModels(exam.id, generated);
+      } else {
+        if (!exam.hasGenerated || force) {
+          await onUpdate(finalExamId, { hasGenerated: true } as any);
+        }
+      }
+
+      if (finalExamId && finalExamId !== 'temp') {
+        await onSaveModels(finalExamId, generated);
       }
     } catch (err) {
       console.error(err);
