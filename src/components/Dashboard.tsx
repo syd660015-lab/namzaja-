@@ -177,9 +177,29 @@ export function Dashboard({ exams, onNew, onView, onResults, onDelete }: Dashboa
                     </motion.button>
                   </div>
                 </div>
-                <h3 className="text-xl font-black text-bento-text mb-4 line-clamp-2 leading-relaxed group-hover:text-primary transition-colors min-h-[3.5rem]">
+                <h3 className="text-xl font-black text-bento-text mb-3 line-clamp-2 leading-relaxed group-hover:text-primary transition-colors min-h-[3.5rem]">
                   {exam.title}
                 </h3>
+                {(() => {
+                  const totalQ = exam.questions.length;
+                  const objQ = exam.questions.filter(q => q.options && q.options.length > 0 && q.options.some(opt => opt && opt.trim() !== '')).length;
+                  const essayQ = totalQ - objQ;
+                  const objPercentage = totalQ > 0 ? Math.round((objQ / totalQ) * 100) : 0;
+                  const essayPercentage = totalQ > 0 ? Math.round((essayQ / totalQ) * 100) : 0;
+                  return (
+                    <div className="bg-bento-bg/50 rounded-xl p-2.5 mb-3 border border-bento-border/40 flex items-center justify-between text-[10px] font-black text-bento-text/50">
+                      <div className="flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-primary" />
+                        <span>موضوعي: <strong className="text-primary">{objQ}</strong> ({objPercentage}%)</span>
+                      </div>
+                      <div className="w-px h-3 bg-bento-border/60" />
+                      <div className="flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-accent" />
+                        <span>مقالي: <strong className="text-accent">{essayQ}</strong> ({essayPercentage}%)</span>
+                      </div>
+                    </div>
+                  );
+                })()}
                 <div className="flex items-center gap-3 mt-6 pt-6 border-t border-bento-border/50 text-[11px] font-black text-bento-text/30 uppercase tracking-widest">
                   <div className="flex items-center gap-1.5">
                     <Clock className="w-3.5 h-3.5" />

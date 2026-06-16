@@ -4,6 +4,7 @@ import {
   signInWithPopup, 
   GoogleAuthProvider, 
   signOut as firebaseSignOut,
+  signInAnonymously,
   User 
 } from 'firebase/auth';
 import { 
@@ -41,12 +42,26 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (u) => {
-      setUser(u);
-      setLoading(false);
-      if (!u) {
-        setExams([]);
-        setView('dashboard');
+    const unsubscribe = onAuthStateChanged(auth, async (u) => {
+      if (u) {
+        setUser(u);
+        setLoading(false);
+      } else {
+        // Automatically authenticate anonymously to avoid forcing logins
+        try {
+          const credential = await signInAnonymously(auth);
+          setUser(credential.user);
+        } catch (err) {
+          console.warn("Firebase Anonymous Sign-In failed or not enabled, using fallback local session:", err);
+          const localUser = {
+            uid: 'guest-uid',
+            displayName: 'أكاديمي زائر',
+            photoURL: '',
+            isAnonymous: true
+          } as unknown as User;
+          setUser(localUser);
+        }
+        setLoading(false);
       }
     });
     return () => unsubscribe();
@@ -54,6 +69,26 @@ export default function App() {
 
   useEffect(() => {
     if (!user) return;
+
+    if (user.uid === 'guest-uid') {
+      try {
+        const stored = localStorage.getItem('namzag_local_exams');
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          const formatted = parsed.map((e: any) => ({
+            ...e,
+            createdAt: e.createdAt ? new Date(e.createdAt) : new Date()
+          }));
+          setExams(formatted);
+        } else {
+          setExams([]);
+        }
+      } catch (err) {
+        console.error("Failed to load local exams:", err);
+        setExams([]);
+      }
+      return;
+    }
 
     const q = query(
       collection(db, 'exams'), 
@@ -84,10 +119,74 @@ export default function App() {
     }
   };
 
-  const logout = () => firebaseSignOut(auth);
+  const logout = async () => {
+    try {
+      if (user?.uid === 'guest-uid') {
+        localStorage.removeItem('namzag_local_exams');
+        localStorage.removeItem('namzag_local_models');
+        window.location.reload();
+        return;
+      }
+      await firebaseSignOut(auth);
+    } catch (err) {
+      console.error(err);
+    }
+  };
 
   const saveExam = async (examData: Partial<Exam>, silent = false) => {
-    if (!user) return;
+    if (!user) return '';
+
+    if (user.uid === 'guest-uid') {
+      try {
+        const stored = localStorage.getItem('namzag_local_exams') || '[]';
+        let localList: any[] = [];
+        try {
+          localList = JSON.parse(stored);
+        } catch (e) {
+          localList = [];
+        }
+
+        let finalId = examData.id || currentExam?.id;
+        if (finalId) {
+          localList = localList.map(item => {
+            if (item.id === finalId) {
+              const { id: _, ...dataWithoutId } = examData;
+              return {
+                ...item,
+                ...dataWithoutId,
+                userId: user.uid,
+                updatedAt: new Date().toISOString()
+              };
+            }
+            return item;
+          });
+        } else {
+          finalId = `local-exam-${Math.random().toString(36).substring(2, 11)}-${Date.now()}`;
+          localList.unshift({
+            ...examData,
+            id: finalId,
+            userId: user.uid,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          });
+        }
+
+        localStorage.setItem('namzag_local_exams', JSON.stringify(localList));
+        
+        const formatted = localList.map((e: any) => ({
+          ...e,
+          createdAt: e.createdAt ? new Date(e.createdAt) : new Date()
+        }));
+        setExams(formatted);
+        if (!silent) setView('dashboard');
+        return finalId;
+      } catch (err) {
+        console.error("Local save failed", err);
+        setError("فشل حفظ ملف الاختبار محلياً.");
+        return '';
+      }
+    }
+
     try {
       if (examData.id || currentExam?.id) {
         const id = examData.id || currentExam?.id;
@@ -98,7 +197,7 @@ export default function App() {
           updatedAt: serverTimestamp(),
         });
         if (!silent) setView('dashboard');
-        return id;
+        return id!;
       } else {
         const docRef = await addDoc(collection(db, 'exams'), {
           ...examData,
@@ -112,11 +211,40 @@ export default function App() {
       console.error(err);
       setError("حدث خطأ أثناء حفظ الاختبار. يرجى التحقق من الصلاحيات.");
       handleFirestoreError(err, OperationType.WRITE, 'exams');
+      return '';
     }
   };
 
   const saveGeneratedModels = async (examId: string, models: GeneratedModel[]) => {
     if (!user) return;
+
+    if (user.uid === 'guest-uid') {
+      try {
+        const stored = localStorage.getItem('namzag_local_models') || '[]';
+        let localModels: any[] = [];
+        try {
+          localModels = JSON.parse(stored);
+        } catch (e) {
+          localModels = [];
+        }
+
+        const newModels = models.map(m => ({
+          ...m,
+          id: `local-model-${Math.random().toString(36).substring(2, 11)}-${Date.now()}`,
+          userId: user.uid,
+          examId: examId,
+          createdAt: new Date().toISOString()
+        }));
+
+        localModels.push(...newModels);
+        localStorage.setItem('namzag_local_models', JSON.stringify(localModels));
+        return;
+      } catch (err) {
+        console.error("Local models save failed", err);
+        return;
+      }
+    }
+
     try {
       const batch = writeBatch(db);
       for (const model of models) {
@@ -138,6 +266,24 @@ export default function App() {
 
   const deleteExam = async (id: string) => {
     try {
+      if (user?.uid === 'guest-uid') {
+        const examStored = localStorage.getItem('namzag_local_exams') || '[]';
+        let localList = JSON.parse(examStored);
+        localList = localList.filter((item: any) => item.id !== id);
+        localStorage.setItem('namzag_local_exams', JSON.stringify(localList));
+
+        const modelsStored = localStorage.getItem('namzag_local_models') || '[]';
+        let localModels = JSON.parse(modelsStored);
+        localModels = localModels.filter((model: any) => model.examId !== id);
+        localStorage.setItem('namzag_local_models', JSON.stringify(localModels));
+
+        setExams(localList.map((e: any) => ({
+          ...e,
+          createdAt: e.createdAt ? new Date(e.createdAt) : new Date()
+        })));
+        return;
+      }
+
       await deleteDoc(doc(db, 'exams', id));
     } catch (err: any) {
       console.error(err);
@@ -156,7 +302,9 @@ export default function App() {
 
   return (
     <div className="min-h-screen pb-20" dir="rtl">
-      <Navbar user={user} login={login} logout={logout} onHome={() => setView('dashboard')} />
+      <div className="print:hidden">
+        <Navbar user={user} login={login} logout={logout} onHome={() => setView('dashboard')} />
+      </div>
       
       <main className="max-w-5xl mx-auto px-4 pt-8">
         <AnimatePresence mode="wait">
@@ -249,7 +397,9 @@ export default function App() {
         )}
       </main>
 
-      <Footer />
+      <div className="print:hidden">
+        <Footer />
+      </div>
     </div>
   );
 }
